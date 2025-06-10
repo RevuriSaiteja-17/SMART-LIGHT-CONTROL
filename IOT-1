@@ -1,0 +1,128 @@
+#include <WiFi.h>
+
+// WiFi credentials
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// Set LED pin
+int ledPin = 5;
+
+// Start server on port 80
+WiFiServer server(80);
+
+void setup() {
+  pinMode(ledPin, OUTPUT);
+  Serial.begin(115200);
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("WiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // Start web server
+  server.begin();
+}
+
+void loop() {
+  WiFiClient client = server.available(); // listen for incoming clients
+
+  if (client) {
+    Serial.println("Client connected");
+    String request = client.readStringUntil('\r');
+    Serial.println("Request: " + request);
+    client.flush();
+
+    if (request.indexOf("LED_ON") != -1) {
+      digitalWrite(ledPin, HIGH);
+      Serial.println("LED turned ON");
+    }
+    if (request.indexOf("LED_OFF") != -1) {
+      digitalWrite(ledPin, LOW);
+      Serial.println("LED turned OFF");
+    }
+
+    // Respond to client
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("Connection: close");
+    client.println();
+    client.println("Command executed");
+    delay(1);
+    client.stop();
+  }
+}
+
+package com.example.smartlight;
+
+import android.os.Bundle;
+import android.widget.Button;
+import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+public class MainActivity extends AppCompatActivity {
+
+    private static final String ESP32_IP = "http://192.168.1.100"; // Replace with your ESP32 IP
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(createLayout());
+
+        Button btnOn = findViewById(1); // ID 1 for LED ON
+        Button btnOff = findViewById(2); // ID 2 for LED OFF
+
+        btnOn.setOnClickListener(view -> sendCommand("LED_ON"));
+        btnOff.setOnClickListener(view -> sendCommand("LED_OFF"));
+    }
+
+    private void sendCommand(String command) {
+        new Thread(() -> {
+            try {
+                URL url = new URL(ESP32_IP + "/" + command);
+                HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setRequestMethod("GET");
+                connection.connect();
+                int responseCode = connection.getResponseCode();
+
+                runOnUiThread(() -> {
+                    if (responseCode == 200) {
+                        Toast.makeText(this, "Command sent: " + command, Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, "Failed to send command", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+                runOnUiThread(() ->
+                    Toast.makeText(this, "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show()
+                );
+            }
+        }).start();
+    }
+
+    private android.widget.LinearLayout createLayout() {
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(50, 200, 50, 50);
+
+        Button btnOn = new Button(this);
+        btnOn.setId(1);
+        btnOn.setText("Turn LED ON");
+        layout.addView(btnOn);
+
+        Button btnOff = new Button(this);
+        btnOff.setId(2);
+        btnOff.setText("Turn LED OFF");
+        layout.addView(btnOff);
+
+        return layout;
+    }
+}
